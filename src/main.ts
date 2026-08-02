@@ -1,6 +1,6 @@
 import './style.css';
 import {
-  handleLogin, handleLogout, initAuthListener, switchView,
+  handleLogin, handleLogout, initAuthListener, switchView, toggleMoreMenu,
   openTxForm, closeTxForm, saveTransaction, editTransaction, deleteTransaction, renderTransactions,
   openClientForm, closeClientForm, saveClient, editClient, deleteClient, onClientLogoChange, clearClientLogo,
   newInvoice, closeInvoiceEditor, addInvoiceItemRow, updateInvoicePreview, saveInvoice, editInvoice, deleteInvoice, renderInvoiceList,
@@ -16,6 +16,7 @@ const w = window as unknown as WindowWithHandlers;
 w.handleLogin = handleLogin;
 w.handleLogout = handleLogout;
 w.switchView = switchView;
+w.toggleMoreMenu = toggleMoreMenu;
 
 w.openTxForm = openTxForm;
 w.closeTxForm = closeTxForm;

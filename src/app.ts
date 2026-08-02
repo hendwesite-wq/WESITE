@@ -106,12 +106,24 @@ async function refreshAndRender(): Promise<void> {
 /* ============================================================
    NAV / VIEWS
    ============================================================ */
+const VIEW_TITLES: Record<string, string> = {
+  dashboard: 'Dashboard',
+  transactions: 'Pemasukan & Pengeluaran',
+  clients: 'Klien',
+  invoices: 'Invoice',
+  receipts: 'Tanda Terima Gaji',
+  settings: 'Pengaturan'
+};
+
 export function switchView(view: string): void {
   document.querySelectorAll('.app-view').forEach((v) => v.classList.remove('active'));
   $('view-' + view).classList.add('active');
-  document.querySelectorAll('.nav-item').forEach((n) => {
+  document.querySelectorAll('.nav-item, .tab-item').forEach((n) => {
     n.classList.toggle('active', (n as HTMLElement).dataset.view === view);
   });
+  const topbarTitle = document.getElementById('mobileTopbarTitle');
+  if (topbarTitle) topbarTitle.textContent = VIEW_TITLES[view] || 'WESITE Finance';
+  closeMoreMenu();
   if (view === 'dashboard') renderDashboard();
   if (view === 'transactions') { populateClientSelects(); renderTransactions(); }
   if (view === 'clients') renderClients();
@@ -120,15 +132,34 @@ export function switchView(view: string): void {
   if (view === 'settings') loadSettingsForm();
 }
 
+export function toggleMoreMenu(): void {
+  const sheet = document.getElementById('mobileMoreSheet');
+  if (sheet) sheet.classList.toggle('open');
+}
+function closeMoreMenu(): void {
+  const sheet = document.getElementById('mobileMoreSheet');
+  if (sheet) sheet.classList.remove('open');
+}
+
 async function bootApp(): Promise<void> {
   $('loginScreen').style.display = 'none';
   $('app').classList.add('active');
 
   const email: string = currentUser?.email || '';
   const name = email.split('@')[0].replace(/\./g, ' ');
-  $('userDisplayName').textContent = name.charAt(0).toUpperCase() + name.slice(1);
-  $('userDisplayEmail').textContent = '@' + email.split('@')[0].toUpperCase();
-  $('userAvatarInitials').textContent = name.slice(0, 2).toUpperCase();
+  const displayName = name.charAt(0).toUpperCase() + name.slice(1);
+  const displayHandle = '@' + email.split('@')[0].toUpperCase();
+  const initials = name.slice(0, 2).toUpperCase();
+
+  $('userDisplayName').textContent = displayName;
+  $('userDisplayEmail').textContent = displayHandle;
+  $('userAvatarInitials').textContent = initials;
+  const mName = document.getElementById('userDisplayNameMobile');
+  const mEmail = document.getElementById('userDisplayEmailMobile');
+  const mAvatar = document.getElementById('userAvatarInitialsMobile');
+  if (mName) mName.textContent = displayName;
+  if (mEmail) mEmail.textContent = displayHandle;
+  if (mAvatar) mAvatar.textContent = initials;
 
   await fetchAll();
   populateClientSelects();

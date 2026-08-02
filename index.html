@@ -65,6 +65,38 @@
     </div>
   </aside>
 
+  <!-- ===== MOBILE CHROME (hanya tampil di layar sempit) ===== -->
+  <header class="mobile-topbar glass">
+    <div class="mobile-topbar-brand">
+      <div class="brand-logo-frame"><img src="https://wesite.my.id/assets/img/logo-icon.png" alt="logo" onerror="this.style.display='none'"></div>
+      <span id="mobileTopbarTitle">Dashboard</span>
+    </div>
+    <span class="sync-dot" title="Tersinkron"></span>
+  </header>
+
+  <nav class="mobile-tabbar glass">
+    <button class="tab-item active" data-view="dashboard" onclick="switchView('dashboard')"><i class="fa-solid fa-chart-pie"></i><span>Beranda</span></button>
+    <button class="tab-item" data-view="transactions" onclick="switchView('transactions')"><i class="fa-solid fa-right-left"></i><span>Transaksi</span></button>
+    <button class="tab-item" data-view="clients" onclick="switchView('clients')"><i class="fa-solid fa-address-book"></i><span>Klien</span></button>
+    <button class="tab-item" data-view="invoices" onclick="switchView('invoices')"><i class="fa-solid fa-file-invoice"></i><span>Invoice</span></button>
+    <button class="tab-item" id="moreTabButton" onclick="toggleMoreMenu()"><i class="fa-solid fa-ellipsis"></i><span>Lainnya</span></button>
+  </nav>
+
+  <div class="mobile-more-sheet" id="mobileMoreSheet">
+    <div class="mobile-more-backdrop" onclick="toggleMoreMenu()"></div>
+    <div class="mobile-more-panel glass">
+      <div class="mobile-more-user">
+        <div class="avatar" id="userAvatarInitialsMobile">--</div>
+        <div><p id="userDisplayNameMobile">-</p><span id="userDisplayEmailMobile">-</span></div>
+      </div>
+      <div class="mobile-more-divider"></div>
+      <button onclick="switchView('receipts'); toggleMoreMenu();"><i class="fa-solid fa-hand-holding-dollar"></i> Tanda Terima Gaji</button>
+      <button onclick="switchView('settings'); toggleMoreMenu();"><i class="fa-solid fa-gear"></i> Pengaturan</button>
+      <div class="mobile-more-divider"></div>
+      <button class="danger" onclick="handleLogout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> Keluar</button>
+    </div>
+  </div>
+
   <main>
     <!-- ============ DASHBOARD ============ -->
     <div class="app-view active" id="view-dashboard">
@@ -95,10 +127,10 @@
 
       <div class="card glass">
         <div class="card-title">Transaksi Terbaru</div>
-        <table>
+        <div class="table-scroll"><table>
           <thead><tr><th>Tanggal</th><th>Klien</th><th>Kategori</th><th>Tipe</th><th style="text-align:right;">Nominal</th></tr></thead>
           <tbody id="recent-tx-body"></tbody>
-        </table>
+        </table></div>
         <div id="recent-tx-empty" class="empty-state" style="display:none;">
           <i class="fa-solid fa-inbox"></i><p>Belum ada transaksi. Tambahkan di menu "Pemasukan & Pengeluaran".</p>
         </div>
@@ -154,10 +186,10 @@
           </select>
           <select id="tx-filter-client" onchange="renderTransactions()"><option value="">Semua Klien</option></select>
         </div>
-        <table>
+        <div class="table-scroll"><table>
           <thead><tr><th>Tanggal</th><th>Klien</th><th>Kategori</th><th>Tipe</th><th style="text-align:right;">Nominal</th><th style="text-align:right;">Aksi</th></tr></thead>
           <tbody id="tx-table-body"></tbody>
-        </table>
+        </table></div>
         <div id="tx-empty" class="empty-state" style="display:none;">
           <i class="fa-solid fa-receipt"></i><p>Belum ada transaksi tercatat.</p>
         </div>
@@ -217,10 +249,10 @@
               <option value="">Semua Status</option><option value="Lunas">Lunas</option><option value="Belum">Belum Dibayar</option><option value="Draft">Draft</option>
             </select>
           </div>
-          <table>
+          <div class="table-scroll"><table>
             <thead><tr><th>No. Invoice</th><th>Klien</th><th>Tanggal</th><th style="text-align:right;">Total</th><th>Status</th><th style="text-align:right;">Aksi</th></tr></thead>
             <tbody id="inv-table-body"></tbody>
-          </table>
+          </table></div>
           <div id="inv-empty" class="empty-state" style="display:none;">
             <i class="fa-solid fa-file-invoice"></i><p>Belum ada invoice dibuat.</p>
           </div>
@@ -335,10 +367,10 @@
           <div class="filters-bar">
             <input type="text" id="rcpt-filter-search" placeholder="Cari nama karyawan..." oninput="renderReceiptList()">
           </div>
-          <table>
+          <div class="table-scroll"><table>
             <thead><tr><th>No. Kwitansi</th><th>Karyawan</th><th>Periode</th><th>Tanggal</th><th style="text-align:right;">Jumlah</th><th style="text-align:right;">Aksi</th></tr></thead>
             <tbody id="rcpt-table-body"></tbody>
-          </table>
+          </table></div>
           <div id="rcpt-empty" class="empty-state" style="display:none;">
             <i class="fa-solid fa-hand-holding-dollar"></i><p>Belum ada tanda terima gaji dibuat.</p>
           </div>
