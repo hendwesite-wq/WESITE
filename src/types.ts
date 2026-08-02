@@ -4,6 +4,7 @@ export interface Client {
   company?: string | null;
   phone?: string | null;
   email?: string | null;
+  logo?: string | null;
   created_at?: string;
 }
 
@@ -64,4 +65,5 @@ export interface AppSettings {
   address: string;
   email: string;
   wa: string;
+  logo?: string | null;
 }

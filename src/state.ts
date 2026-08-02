@@ -9,7 +9,8 @@ export let settings: AppSettings = {
   company_name: 'WESITE',
   address: 'Yogyakarta, Indonesia',
   email: 'wesite.id@gmail.com',
-  wa: '+62 896 8894 6655'
+  wa: '+62 896 8894 6655',
+  logo: null
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

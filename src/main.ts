@@ -2,10 +2,10 @@ import './style.css';
 import {
   handleLogin, handleLogout, initAuthListener, switchView,
   openTxForm, closeTxForm, saveTransaction, editTransaction, deleteTransaction, renderTransactions,
-  openClientForm, closeClientForm, saveClient, editClient, deleteClient,
+  openClientForm, closeClientForm, saveClient, editClient, deleteClient, onClientLogoChange, clearClientLogo,
   newInvoice, closeInvoiceEditor, addInvoiceItemRow, updateInvoicePreview, saveInvoice, editInvoice, deleteInvoice, renderInvoiceList,
   newReceipt, closeReceiptEditor, updateReceiptPreview, saveReceipt, editReceipt, deleteReceipt, renderReceiptList,
-  printDocument, saveSettings, exportData
+  printDocument, downloadPdf, saveSettings, onSettingsLogoChange, clearSettingsLogo, exportData
 } from './app';
 
 // Markup HTML (index.html) memakai atribut onclick/oninput/onchange langsung,
@@ -29,6 +29,8 @@ w.closeClientForm = closeClientForm;
 w.saveClient = saveClient;
 w.editClient = editClient;
 w.deleteClient = deleteClient;
+w.onClientLogoChange = onClientLogoChange;
+w.clearClientLogo = clearClientLogo;
 
 w.newInvoice = newInvoice;
 w.closeInvoiceEditor = closeInvoiceEditor;
@@ -48,7 +50,10 @@ w.deleteReceipt = deleteReceipt;
 w.renderReceiptList = renderReceiptList;
 
 w.printDocument = printDocument;
+w.downloadPdf = downloadPdf;
 w.saveSettings = saveSettings;
+w.onSettingsLogoChange = onSettingsLogoChange;
+w.clearSettingsLogo = clearSettingsLogo;
 w.exportData = exportData;
 
 // Mulai dengarkan status login Supabase (akan otomatis render app kalau sesi sudah ada)

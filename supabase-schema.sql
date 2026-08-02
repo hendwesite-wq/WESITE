@@ -12,6 +12,7 @@ create table if not exists clients (
   company text,
   phone text,
   email text,
+  logo text, -- logo klien dalam format base64 data URL
   created_at timestamptz default now()
 );
 
@@ -65,7 +66,8 @@ create table if not exists app_settings (
   company_name text default 'WESITE',
   address text default 'Yogyakarta, Indonesia',
   email text default 'wesite.id@gmail.com',
-  wa text default '+62 896 8894 6655'
+  wa text default '+62 896 8894 6655',
+  logo text -- logo bisnis dalam format base64 data URL
 );
 insert into app_settings (id) values (1) on conflict (id) do nothing;
 

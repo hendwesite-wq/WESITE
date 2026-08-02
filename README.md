@@ -26,6 +26,20 @@ wesite-finance/
 
 ---
 
+## Update terbaru (kalau kamu sudah pernah setup sebelumnya)
+
+Kalau project Supabase kamu **sudah pernah** menjalankan `supabase-schema.sql` versi lama:
+1. Buka **SQL Editor** di Supabase → jalankan isi `supabase-migration-logo.sql` (aman dijalankan berkali-kali).
+2. Update semua file di repo GitHub kamu dengan isi paket ini (timpa file lama), lalu `git push` — Vercel akan otomatis build ulang.
+3. Karena ada 2 package baru (`html2canvas`, `jspdf`), Vercel akan otomatis `npm install` ulang saat build — tidak perlu tindakan tambahan di Vercel.
+
+Yang berubah:
+- Logo sekarang **diupload sendiri** (bukan dari link luar) — lewat menu **Pengaturan** (logo bisnis) dan form **Klien** (logo klien, opsional). Ini juga memperbaiki masalah logo tidak muncul di PDF.
+- Tombol **Download PDF** sekarang benar-benar mengunduh file `.pdf`, tidak lagi bergantung pada dialog print browser (yang sering gagal terutama di HP). Tombol **Print** lama masih ada sebagai opsi cadangan.
+- Kwitansi gaji tidak lagi menampilkan kolom tanda tangan.
+
+---
+
 ## BAGIAN 1 — Setup Database (Supabase)
 
 1. Buka [supabase.com](https://supabase.com) → **New project**. Simpan password database dan pilih region **Singapore** (tercepat untuk Indonesia).

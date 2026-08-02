@@ -230,12 +230,23 @@ select option{background:#0F1B2E;}
 .receipt-amount-box .words{font-size:11.5px;color:#64748B;font-style:italic;margin-top:4px;}
 .receipt-rows p{font-size:12.5px;color:#334155;padding:6px 0;border-bottom:1px dashed #E2E8F0;display:flex;justify-content:space-between;}
 .receipt-rows p span:first-child{color:#64748B;}
-.sign-grid{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-top:40px;text-align:center;}
-.sign-grid .line{border-top:1px solid #334155;margin-top:52px;padding-top:6px;font-size:11.5px;font-weight:600;color:#0F172A;}
-.sign-grid .role{font-size:10.5px;color:#64748B;}
 
 .items-table-form th{text-align:left;font-size:11px;color:var(--text-muted);padding-bottom:8px;}
 .items-table-form td{border:none;padding:5px 4px;}
+
+/* logo upload (settings & client) */
+.logo-upload-row{display:flex;gap:14px;align-items:flex-start;}
+.logo-preview{width:64px;height:64px;border-radius:12px;background:rgba(255,255,255,.04);
+  border:1px dashed var(--glass-border);display:flex;align-items:center;justify-content:center;
+  overflow:hidden;flex-shrink:0;color:var(--text-muted);font-size:18px;}
+.logo-preview img{width:100%;height:100%;object-fit:contain;}
+input[type="file"]{padding:8px 10px;font-size:12px;}
+
+/* fallback badge dipakai di dokumen invoice/kwitansi kalau logo belum diupload */
+.logo-fallback{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;color:var(--navy);}
+.logo-slot img{width:100%;height:100%;object-fit:contain;padding:4px;}
+.logo-slot-sm{width:28px;height:28px;border-radius:7px;flex-shrink:0;}
+.logo-slot-sm .logo-fallback{font-size:11px;}
 
 /* print — render only a detached #printRoot at body level, avoiding blank-page issues from sticky/grid ancestors */
 @media print{

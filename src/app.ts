@@ -1,4 +1,6 @@
 import { Chart } from 'chart.js/auto';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import { supabase } from './supabaseClient';
 import { formatRp, terbilang, usernameToEmail } from './format';
 import {
@@ -10,6 +12,27 @@ import type { Invoice, InvoiceItem, Receipt, Transaction } from './types';
 /** Helper singkat & aman-tipe untuk document.getElementById */
 function $<T extends HTMLElement = HTMLElement>(id: string): T {
   return document.getElementById(id) as T;
+}
+
+/** Ubah file yang dipilih user jadi base64 data URL, siap disimpan ke Supabase. */
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+/** Isi elemen logo-slot dengan gambar (data URL) kalau ada, atau badge inisial kalau tidak ada. */
+function renderLogoSlot(slotId: string, dataUrl: string | null | undefined, initials: string): void {
+  const slot = document.getElementById(slotId);
+  if (!slot) return;
+  if (dataUrl) {
+    slot.innerHTML = `<img src="${dataUrl}" alt="logo">`;
+  } else {
+    slot.innerHTML = `<span class="logo-fallback">${initials}</span>`;
+  }
 }
 
 /* ============================================================
@@ -326,8 +349,25 @@ export function openClientForm(): void {
   $<HTMLInputElement>('client-company').value = '';
   $<HTMLInputElement>('client-phone').value = '';
   $<HTMLInputElement>('client-email').value = '';
+  $<HTMLInputElement>('client-logo-data').value = '';
+  $<HTMLInputElement>('client-logo-input').value = '';
+  renderLogoSlot('client-logo-preview', null, 'K');
 }
 export function closeClientForm(): void { $('client-form-card').style.display = 'none'; }
+
+export async function onClientLogoChange(e: Event): Promise<void> {
+  const input = e.target as HTMLInputElement;
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const dataUrl = await readFileAsDataUrl(file);
+  $<HTMLInputElement>('client-logo-data').value = dataUrl;
+  renderLogoSlot('client-logo-preview', dataUrl, 'K');
+}
+export function clearClientLogo(): void {
+  $<HTMLInputElement>('client-logo-data').value = '';
+  $<HTMLInputElement>('client-logo-input').value = '';
+  renderLogoSlot('client-logo-preview', null, 'K');
+}
 
 export async function saveClient(): Promise<void> {
   if (!supabase) return;
@@ -338,7 +378,8 @@ export async function saveClient(): Promise<void> {
     name,
     company: $<HTMLInputElement>('client-company').value.trim(),
     phone: $<HTMLInputElement>('client-phone').value.trim(),
-    email: $<HTMLInputElement>('client-email').value.trim()
+    email: $<HTMLInputElement>('client-email').value.trim(),
+    logo: $<HTMLInputElement>('client-logo-data').value || null
   };
   if (editId) {
     await supabase.from('clients').update(payload).eq('id', editId);
@@ -359,6 +400,8 @@ export function editClient(id: string): void {
   $<HTMLInputElement>('client-company').value = c.company || '';
   $<HTMLInputElement>('client-phone').value = c.phone || '';
   $<HTMLInputElement>('client-email').value = c.email || '';
+  $<HTMLInputElement>('client-logo-data').value = c.logo || '';
+  renderLogoSlot('client-logo-preview', c.logo, c.name.slice(0, 2).toUpperCase());
 }
 
 export async function deleteClient(id: string): Promise<void> {
@@ -468,6 +511,7 @@ export function addInvoiceItemRow(service = '', qty = 1, price = 0): void {
 export function updateInvoicePreview(): number {
   $('comp-name-fill').textContent = settings.company_name;
   $('comp-contact-fill').textContent = `${settings.email} | ${settings.wa}`;
+  renderLogoSlot('prev-logo-slot', settings.logo, (settings.company_name || 'WS').slice(0, 2).toUpperCase());
 
   const status = $<HTMLSelectElement>('inv-status').value;
   const doc = $('invoiceDocToPrint');
@@ -485,6 +529,13 @@ export function updateInvoicePreview(): number {
   $('prev-client-name').textContent = c ? c.name : 'Nama Klien';
   $('prev-client-company').textContent = c ? (c.company || '') : '';
   $('prev-client-contact').textContent = c ? [c.phone, c.email].filter(Boolean).join(' | ') : '';
+  const clientLogoSlot = $('prev-client-logo-slot');
+  if (c && c.logo) {
+    clientLogoSlot.style.display = 'flex';
+    renderLogoSlot('prev-client-logo-slot', c.logo, c.name.slice(0, 2).toUpperCase());
+  } else {
+    clientLogoSlot.style.display = 'none';
+  }
 
   let subtotal = 0;
   const tbody = $('prev-items-body'); tbody.innerHTML = '';
@@ -637,12 +688,12 @@ export function newReceipt(): void {
 export function closeReceiptEditor(): void { showReceiptList(); }
 
 export function updateReceiptPreview(): void {
+  renderLogoSlot('rprev-logo-slot', settings.logo, (settings.company_name || 'WS').slice(0, 2).toUpperCase());
   $('rprev-number').textContent = $<HTMLInputElement>('rcpt-number').value || '-';
   $('rprev-date').textContent = $<HTMLInputElement>('rcpt-date').value || '-';
   $('rprev-period').textContent = $<HTMLInputElement>('rcpt-period').value || '-';
   const emp = $<HTMLInputElement>('rcpt-employee').value || '-';
   $('rprev-employee').textContent = emp;
-  $('rprev-employee-sign').textContent = emp;
   $('rprev-position').textContent = $<HTMLInputElement>('rcpt-position').value || '-';
   $('rprev-method').textContent = $<HTMLSelectElement>('rcpt-method').value;
   const amount = parseFloat($<HTMLInputElement>('rcpt-amount').value) || 0;
@@ -727,8 +778,64 @@ export function printDocument(elementId: string): void {
   root.id = 'printRoot';
   root.appendChild(source.cloneNode(true));
   document.body.appendChild(root);
+
+  const cleanup = () => {
+    const r = document.getElementById('printRoot');
+    if (r) r.remove();
+    window.removeEventListener('afterprint', cleanup);
+  };
+  // 'afterprint' lebih andal daripada setTimeout — baru bersih-bersih setelah
+  // dialog print benar-benar ditutup, bukan tebak-tebakan durasi.
+  window.addEventListener('afterprint', cleanup);
   window.print();
-  setTimeout(() => { const r = document.getElementById('printRoot'); if (r) r.remove(); }, 500);
+  // fallback kalau browser tidak memicu 'afterprint' (beberapa webview mobile)
+  setTimeout(cleanup, 4000);
+}
+
+/**
+ * Download dokumen sebagai file PDF sungguhan (bukan lewat dialog print browser).
+ * Dipakai supaya hasil selalu bisa diunduh langsung, termasuk di HP/webview
+ * yang seringkali tidak menampilkan opsi "Save as PDF" dengan baik.
+ */
+export async function downloadPdf(elementId: string, filenamePrefix: string): Promise<void> {
+  const source = document.getElementById(elementId);
+  if (!source) return;
+
+  const btns = document.querySelectorAll<HTMLButtonElement>('button');
+  btns.forEach((b) => { b.disabled = true; });
+
+  try {
+    const canvas = await html2canvas(source, {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      useCORS: true
+    });
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const imgWidth = pageWidth;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+    let heightLeft = imgHeight;
+    let position = 0;
+    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+    while (heightLeft > 0) {
+      position = heightLeft - imgHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+    }
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    pdf.save(`${filenamePrefix}-${stamp}.pdf`);
+  } catch (err) {
+    console.error(err);
+    alert('Gagal membuat PDF. Coba pakai tombol "Print" sebagai alternatif.');
+  } finally {
+    btns.forEach((b) => { b.disabled = false; });
+  }
 }
 
 /* ============================================================
@@ -739,6 +846,22 @@ function loadSettingsForm(): void {
   $<HTMLInputElement>('set-address').value = settings.address;
   $<HTMLInputElement>('set-email').value = settings.email;
   $<HTMLInputElement>('set-wa').value = settings.wa;
+  $<HTMLInputElement>('settings-logo-data').value = settings.logo || '';
+  renderLogoSlot('settings-logo-preview', settings.logo, (settings.company_name || 'WS').slice(0, 2).toUpperCase());
+}
+
+export async function onSettingsLogoChange(e: Event): Promise<void> {
+  const input = e.target as HTMLInputElement;
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const dataUrl = await readFileAsDataUrl(file);
+  $<HTMLInputElement>('settings-logo-data').value = dataUrl;
+  renderLogoSlot('settings-logo-preview', dataUrl, 'WS');
+}
+export function clearSettingsLogo(): void {
+  $<HTMLInputElement>('settings-logo-data').value = '';
+  $<HTMLInputElement>('settings-logo-input').value = '';
+  renderLogoSlot('settings-logo-preview', null, 'WS');
 }
 
 export async function saveSettings(): Promise<void> {
@@ -748,7 +871,8 @@ export async function saveSettings(): Promise<void> {
     company_name: $<HTMLInputElement>('set-company-name').value.trim() || 'WESITE',
     address: $<HTMLInputElement>('set-address').value.trim(),
     email: $<HTMLInputElement>('set-email').value.trim(),
-    wa: $<HTMLInputElement>('set-wa').value.trim()
+    wa: $<HTMLInputElement>('set-wa').value.trim(),
+    logo: $<HTMLInputElement>('settings-logo-data').value || null
   };
   await supabase.from('app_settings').upsert(payload);
   await refreshAndRender();
