@@ -1,4 +1,5 @@
 import { Chart } from 'chart.js/auto';
+import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { supabase } from './supabaseClient';
 import { formatRp, terbilang, usernameToEmail } from './format';
@@ -960,6 +961,21 @@ export function printDocument(elementId: string): void {
  * tabel. Konten juga dirender ulang di lebar tetap (bukan lebar layar saat itu)
  * supaya proporsinya selalu konsisten baik dibuat dari HP maupun desktop.
  */
+/**
+ * Download dokumen sebagai file PDF sungguhan (bukan lewat dialog print browser).
+ *
+ * Pendekatan: render TIAP BLOK (child langsung dari dokumen — header, alamat,
+ * tabel item, total, dst) sebagai screenshot terpisah lewat html2canvas —
+ * supaya tampilan PERSIS sama seperti di layar (logo, warna, font semuanya
+ * akurat). Lalu blok-blok itu ditempel satu per satu ke halaman PDF, dan
+ * kalau sebuah blok tidak muat di sisa halaman, halaman baru dibuka SEBELUM
+ * blok itu — jadi potongan halaman selalu jatuh di antar-blok, tidak pernah
+ * memotong tengah tabel atau tengah teks.
+ *
+ * (Catatan: sebelumnya sempat dicoba jsPDF#html() yang me-render ulang CSS
+ * dengan mesinnya sendiri — hasilnya berantakan karena tidak paham flexbox/
+ * gradient dsb. Screenshot per-blok ini jauh lebih akurat.)
+ */
 export async function downloadPdf(elementId: string, filenamePrefix: string): Promise<void> {
   const source = document.getElementById(elementId);
   if (!source) return;
@@ -980,18 +996,62 @@ export async function downloadPdf(elementId: string, filenamePrefix: string): Pr
 
   try {
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
-    const marginPt = 26;
+    const marginPt = 24;
     const pageWidthPt = pdf.internal.pageSize.getWidth();
+    const pageHeightPt = pdf.internal.pageSize.getHeight();
     const contentWidthPt = pageWidthPt - marginPt * 2;
+    const usableHeightPt = pageHeightPt - marginPt * 2;
 
-    await pdf.html(clone, {
-      x: marginPt,
-      y: marginPt,
-      width: contentWidthPt,
-      windowWidth: FIXED_WIDTH_PX,
-      autoPaging: 'text',
-      html2canvas: { scale: 2, backgroundColor: '#ffffff', useCORS: true }
-    });
+    const blocks = Array.from(clone.children).filter(
+      (el) => el instanceof HTMLElement
+    ) as HTMLElement[];
+    const targets = blocks.length ? blocks : [clone];
+
+    let cursorY = marginPt;
+    let pageHasContent = false;
+
+    for (const block of targets) {
+      const canvas = await html2canvas(block, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+      const imgData = canvas.toDataURL('image/png');
+      const imgWidthPt = contentWidthPt;
+      const imgHeightPt = (canvas.height / canvas.width) * imgWidthPt;
+
+      if (imgHeightPt > usableHeightPt) {
+        // Blok ini sendirian lebih tinggi dari satu halaman penuh (mis. tabel
+        // item sangat panjang) — potong per-halaman sebagai upaya terakhir.
+        if (pageHasContent) { pdf.addPage(); cursorY = marginPt; pageHasContent = false; }
+        const pxPerPt = canvas.width / imgWidthPt;
+        let renderedPt = 0;
+        let lastSliceHeightPt = 0;
+        while (renderedPt < imgHeightPt) {
+          const sliceHeightPt = Math.min(usableHeightPt, imgHeightPt - renderedPt);
+          const sliceCanvas = document.createElement('canvas');
+          sliceCanvas.width = canvas.width;
+          sliceCanvas.height = Math.round(sliceHeightPt * pxPerPt);
+          const ctx = sliceCanvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(canvas, 0, Math.round(renderedPt * pxPerPt), canvas.width, sliceCanvas.height, 0, 0, canvas.width, sliceCanvas.height);
+            pdf.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', marginPt, marginPt, imgWidthPt, sliceHeightPt);
+          }
+          renderedPt += sliceHeightPt;
+          lastSliceHeightPt = sliceHeightPt;
+          if (renderedPt < imgHeightPt) pdf.addPage();
+        }
+        cursorY = marginPt + lastSliceHeightPt;
+        pageHasContent = true;
+        continue;
+      }
+
+      if (pageHasContent && cursorY + imgHeightPt > marginPt + usableHeightPt) {
+        pdf.addPage();
+        cursorY = marginPt;
+        pageHasContent = false;
+      }
+
+      pdf.addImage(imgData, 'PNG', marginPt, cursorY, imgWidthPt, imgHeightPt);
+      cursorY += imgHeightPt;
+      pageHasContent = true;
+    }
 
     const stamp = new Date().toISOString().slice(0, 10);
     pdf.save(`${filenamePrefix}-${stamp}.pdf`);
