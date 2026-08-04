@@ -35,6 +35,22 @@ function renderLogoSlot(slotId: string, dataUrl: string | null | undefined, init
   }
 }
 
+/**
+ * Tampilkan pesan error Supabase secara jelas ke pengguna, alih-alih diam-diam
+ * gagal seolah berhasil. Kembalikan true kalau ADA error (supaya pemanggil bisa
+ * langsung `return` dan tidak melanjutkan seperti proses sukses).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function reportSupabaseError(error: any, context: string): boolean {
+  if (!error) return false;
+  console.error(`[${context}]`, error);
+  const hint = /column .* does not exist/i.test(error.message || '')
+    ? '\n\nSepertinya skema database belum diperbarui — jalankan supabase-migration-logo.sql (atau supabase-schema.sql) di SQL Editor Supabase, lalu coba lagi.'
+    : '';
+  alert(`Gagal menyimpan (${context}): ${error.message || 'terjadi kesalahan tidak dikenal'}${hint}`);
+  return true;
+}
+
 /* ============================================================
    AUTH
    ============================================================ */
@@ -310,9 +326,11 @@ export async function saveTransaction(): Promise<void> {
     note: $<HTMLInputElement>('tx-note').value.trim()
   };
   if (editId) {
-    await supabase.from('transactions').update(payload).eq('id', editId);
+    const { error } = await supabase.from('transactions').update(payload).eq('id', editId);
+    if (reportSupabaseError(error, 'Simpan Transaksi')) return;
   } else {
-    await supabase.from('transactions').insert(payload);
+    const { error } = await supabase.from('transactions').insert(payload);
+    if (reportSupabaseError(error, 'Simpan Transaksi')) return;
   }
   await refreshAndRender();
   closeTxForm();
@@ -413,9 +431,11 @@ export async function saveClient(): Promise<void> {
     logo: $<HTMLInputElement>('client-logo-data').value || null
   };
   if (editId) {
-    await supabase.from('clients').update(payload).eq('id', editId);
+    const { error } = await supabase.from('clients').update(payload).eq('id', editId);
+    if (reportSupabaseError(error, 'Simpan Klien')) return;
   } else {
-    await supabase.from('clients').insert(payload);
+    const { error } = await supabase.from('clients').insert(payload);
+    if (reportSupabaseError(error, 'Simpan Klien')) return;
   }
   await refreshAndRender();
   closeClientForm();
@@ -622,10 +642,12 @@ export async function saveInvoice(): Promise<void> {
 
   let invoiceRow: Invoice | null = null;
   if (editId) {
-    const { data } = await supabase.from('invoices').update(payload).eq('id', editId).select().single();
+    const { data, error } = await supabase.from('invoices').update(payload).eq('id', editId).select().single();
+    if (reportSupabaseError(error, 'Simpan Invoice')) return;
     invoiceRow = data as Invoice;
   } else {
-    const { data } = await supabase.from('invoices').insert(payload).select().single();
+    const { data, error } = await supabase.from('invoices').insert(payload).select().single();
+    if (reportSupabaseError(error, 'Simpan Invoice')) return;
     invoiceRow = data as Invoice;
   }
   if (!invoiceRow) return;
@@ -754,10 +776,12 @@ export async function saveReceipt(): Promise<void> {
 
   let receiptRow: Receipt | null = null;
   if (editId) {
-    const { data } = await supabase.from('receipts').update(payload).eq('id', editId).select().single();
+    const { data, error } = await supabase.from('receipts').update(payload).eq('id', editId).select().single();
+    if (reportSupabaseError(error, 'Simpan Tanda Terima')) return;
     receiptRow = data as Receipt;
   } else {
-    const { data } = await supabase.from('receipts').insert(payload).select().single();
+    const { data, error } = await supabase.from('receipts').insert(payload).select().single();
+    if (reportSupabaseError(error, 'Simpan Tanda Terima')) return;
     receiptRow = data as Receipt;
   }
   if (!receiptRow) return;
@@ -905,7 +929,8 @@ export async function saveSettings(): Promise<void> {
     wa: $<HTMLInputElement>('set-wa').value.trim(),
     logo: $<HTMLInputElement>('settings-logo-data').value || null
   };
-  await supabase.from('app_settings').upsert(payload);
+  const { error } = await supabase.from('app_settings').upsert(payload);
+  if (reportSupabaseError(error, 'Simpan Pengaturan')) return;
   await refreshAndRender();
   alert('Pengaturan disimpan.');
 }
