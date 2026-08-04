@@ -292,10 +292,12 @@ select option{background:#0F1B2E;}
 .doc-items-table{width:100%;border-collapse:collapse;margin-bottom:18px;}
 .doc-items-table th{background:#F1F5F9;padding:9px 10px;font-size:10px;text-transform:uppercase;color:#475569;text-align:left;}
 .doc-items-table td{padding:9px 10px;border-bottom:1px solid #F1F5F9;font-size:12px;}
-.doc-totals{margin-left:auto;width:250px;font-size:12px;}
+.doc-items-table tr{page-break-inside:avoid;break-inside:avoid;}
+.doc-totals{margin-left:auto;width:250px;font-size:12px;page-break-inside:avoid;break-inside:avoid;}
 .doc-totals div{display:flex;justify-content:space-between;padding:6px 0;color:#475569;}
 .doc-totals .grand{border-top:2px solid #0F172A;margin-top:6px;padding-top:10px;font-size:15px;font-weight:800;color:#0F172A;}
 .doc-foot{margin-top:28px;border-top:1px solid #E2E8F0;padding-top:16px;font-size:10.5px;color:#64748B;}
+.doc-header,.doc-addresses-grid,.doc-meta-strip,.receipt-amount-box,.receipt-rows{page-break-inside:avoid;break-inside:avoid;}
 
 /* receipt specific */
 .receipt-amount-box{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:16px 20px;margin:22px 0;text-align:center;}
@@ -306,6 +308,9 @@ select option{background:#0F1B2E;}
 
 .items-table-form th{text-align:left;font-size:11px;color:var(--text-muted);padding-bottom:8px;}
 .items-table-form td{border:none;padding:5px 4px;}
+
+.autosave-status{font-size:11.5px;color:var(--text-muted);min-height:16px;display:flex;align-items:center;gap:6px;}
+.autosave-status:not(:empty)::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--income);flex-shrink:0;}
 
 /* logo upload (settings & client) */
 .logo-upload-row{display:flex;gap:14px;align-items:flex-start;}

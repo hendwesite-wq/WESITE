@@ -1,5 +1,4 @@
 import { Chart } from 'chart.js/auto';
-import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { supabase } from './supabaseClient';
 import { formatRp, terbilang, usernameToEmail } from './format';
@@ -82,6 +81,7 @@ export async function handleLogin(e: Event): Promise<void> {
 }
 
 export async function handleLogout(): Promise<void> {
+  await flushPendingAutosaves();
   if (supabase) await supabase.auth.signOut();
   showLogin();
 }
@@ -107,6 +107,13 @@ export function initAuthListener(): void {
     err.textContent = 'Supabase belum dikonfigurasi — isi VITE_SUPABASE_URL & VITE_SUPABASE_ANON_KEY (lihat README.md).';
     err.classList.add('show');
   }
+
+  // Pengaman tambahan: kalau tab ditutup/dipindah (misalnya buka app lain di HP)
+  // sebelum jeda auto-save (±1 detik) selesai, simpan segera saat itu juga.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushPendingAutosaves();
+  });
+  window.addEventListener('pagehide', () => { flushPendingAutosaves(); });
 }
 
 async function refreshAndRender(): Promise<void> {
@@ -131,7 +138,8 @@ const VIEW_TITLES: Record<string, string> = {
   settings: 'Pengaturan'
 };
 
-export function switchView(view: string): void {
+export async function switchView(view: string): Promise<void> {
+  await flushPendingAutosaves();
   document.querySelectorAll('.app-view').forEach((v) => v.classList.remove('active'));
   $('view-' + view).classList.add('active');
   document.querySelectorAll('.nav-item, .tab-item').forEach((n) => {
@@ -531,6 +539,8 @@ export { renderInvoiceList };
 export function newInvoice(): void {
   $('invoice-list-wrap').style.display = 'none';
   $('invoice-editor-wrap').style.display = 'block';
+  if (invoiceAutosaveTimer) { window.clearTimeout(invoiceAutosaveTimer); invoiceAutosaveTimer = undefined; }
+  setAutosaveStatus('inv-autosave-status', '');
   $<HTMLInputElement>('inv-edit-id').value = '';
   $<HTMLInputElement>('inv-number').value = 'WST-INV-' + new Date().getFullYear() + '-' + String(invoices.length + 1).padStart(4, '0');
   $<HTMLSelectElement>('inv-status').value = 'Belum';
@@ -545,7 +555,7 @@ export function newInvoice(): void {
   updateInvoicePreview();
 }
 
-export function closeInvoiceEditor(): void { showInvoiceList(); }
+export async function closeInvoiceEditor(): Promise<void> { await flushPendingAutosaves(); showInvoiceList(); }
 
 export function addInvoiceItemRow(service = '', qty = 1, price = 0): void {
   const row = document.createElement('tr');
@@ -557,6 +567,21 @@ export function addInvoiceItemRow(service = '', qty = 1, price = 0): void {
     <td><button class="btn btn-danger btn-sm" onclick="this.closest('tr').remove(); updateInvoicePreview();"><i class="fa-solid fa-xmark"></i></button></td>`;
   $('inv-items-body').appendChild(row);
   updateInvoicePreview();
+}
+
+/** Hitung total invoice dari form saat ini, tanpa menyentuh DOM preview (dipakai saat autosave). */
+function computeInvoiceGrandTotal(): number {
+  let subtotal = 0;
+  document.querySelectorAll<HTMLTableRowElement>('.inv-item-row').forEach((row) => {
+    const q = parseInt((row.querySelector('.item-qty') as HTMLInputElement).value) || 0;
+    const p = parseFloat((row.querySelector('.item-price') as HTMLInputElement).value) || 0;
+    subtotal += q * p;
+  });
+  const disc = parseFloat($<HTMLInputElement>('inv-discount').value) || 0;
+  const tax = parseFloat($<HTMLInputElement>('inv-tax').value) || 0;
+  const dAmt = subtotal * (disc / 100);
+  const tAmt = (subtotal - dAmt) * (tax / 100);
+  return (subtotal - dAmt) + tAmt;
 }
 
 export function updateInvoicePreview(): number {
@@ -609,15 +634,22 @@ export function updateInvoicePreview(): number {
   $('prev-tax').textContent = formatRp(tAmt);
   $('prev-grand-total').textContent = formatRp(grand);
 
+  scheduleInvoiceAutosave();
   return grand;
 }
 
-export async function saveInvoice(): Promise<void> {
-  if (!supabase) return;
+/**
+ * Inti logika simpan invoice, dipakai baik oleh tombol "Simpan Invoice" (silent:false,
+ * menampilkan alert & pindah ke daftar) maupun oleh auto-save senyap (silent:true,
+ * berjalan di latar belakang tanpa mengganggu user yang masih mengetik).
+ * Mengembalikan true kalau berhasil disimpan.
+ */
+async function buildAndSaveInvoice(silent: boolean): Promise<boolean> {
+  if (!supabase) return false;
   const number = $<HTMLInputElement>('inv-number').value.trim();
-  if (!number) { alert('Nomor invoice wajib diisi.'); return; }
+  if (!number) { if (!silent) alert('Nomor invoice wajib diisi.'); return false; }
   const clientId = $<HTMLSelectElement>('inv-client').value;
-  if (!clientId) { alert('Pilih klien terlebih dahulu.'); return; }
+  if (!clientId) { if (!silent) alert('Pilih klien terlebih dahulu.'); return false; }
 
   const items: InvoiceItem[] = [];
   document.querySelectorAll<HTMLTableRowElement>('.inv-item-row').forEach((row) => {
@@ -627,7 +659,7 @@ export async function saveInvoice(): Promise<void> {
       price: parseFloat((row.querySelector('.item-price') as HTMLInputElement).value) || 0
     });
   });
-  const total = updateInvoicePreview();
+  const total = computeInvoiceGrandTotal();
   const editId = $<HTMLInputElement>('inv-edit-id').value;
   const status = $<HTMLSelectElement>('inv-status').value;
   const payload = {
@@ -643,14 +675,15 @@ export async function saveInvoice(): Promise<void> {
   let invoiceRow: Invoice | null = null;
   if (editId) {
     const { data, error } = await supabase.from('invoices').update(payload).eq('id', editId).select().single();
-    if (reportSupabaseError(error, 'Simpan Invoice')) return;
+    if (reportSupabaseError(error, silent ? 'Auto-save Invoice' : 'Simpan Invoice')) return false;
     invoiceRow = data as Invoice;
   } else {
     const { data, error } = await supabase.from('invoices').insert(payload).select().single();
-    if (reportSupabaseError(error, 'Simpan Invoice')) return;
+    if (reportSupabaseError(error, silent ? 'Auto-save Invoice' : 'Simpan Invoice')) return false;
     invoiceRow = data as Invoice;
+    if (invoiceRow) $<HTMLInputElement>('inv-edit-id').value = invoiceRow.id; // supaya auto-save berikutnya UPDATE, bukan INSERT baru
   }
-  if (!invoiceRow) return;
+  if (!invoiceRow) return false;
 
   await supabase.from('transactions').delete().eq('invoice_id', invoiceRow.id);
   if (status === 'Lunas') {
@@ -661,7 +694,48 @@ export async function saveInvoice(): Promise<void> {
       note: 'Otomatis dari invoice ' + invoiceRow.number
     });
   }
+  return true;
+}
 
+let invoiceAutosaveTimer: number | undefined;
+function scheduleInvoiceAutosave(): void {
+  if (invoiceAutosaveTimer) window.clearTimeout(invoiceAutosaveTimer);
+  setAutosaveStatus('inv-autosave-status', 'Menyimpan draf...');
+  invoiceAutosaveTimer = window.setTimeout(async () => {
+    invoiceAutosaveTimer = undefined;
+    const ok = await buildAndSaveInvoice(true);
+    setAutosaveStatus('inv-autosave-status', ok ? ('Tersimpan otomatis \u00B7 ' + nowTime()) : '');
+    if (ok) await fetchAll(); // sinkronkan cache lokal, tanpa render ulang form yang sedang diisi
+  }, 1100);
+}
+
+/** Kalau ada auto-save yang masih tertunda, simpan segera (dipanggil sebelum pindah halaman). */
+async function flushPendingAutosaves(): Promise<void> {
+  if (invoiceAutosaveTimer) {
+    window.clearTimeout(invoiceAutosaveTimer);
+    invoiceAutosaveTimer = undefined;
+    await buildAndSaveInvoice(true);
+  }
+  if (receiptAutosaveTimer) {
+    window.clearTimeout(receiptAutosaveTimer);
+    receiptAutosaveTimer = undefined;
+    await buildAndSaveReceipt(true);
+  }
+  await fetchAll();
+}
+
+function setAutosaveStatus(elId: string, text: string): void {
+  const el = document.getElementById(elId);
+  if (el) el.textContent = text;
+}
+function nowTime(): string {
+  return new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+}
+
+export async function saveInvoice(): Promise<void> {
+  if (invoiceAutosaveTimer) { window.clearTimeout(invoiceAutosaveTimer); invoiceAutosaveTimer = undefined; }
+  const ok = await buildAndSaveInvoice(false);
+  if (!ok) return;
   await refreshAndRender();
   showInvoiceList();
 }
@@ -671,6 +745,8 @@ export function editInvoice(id: string): void {
   if (!inv) return;
   $('invoice-list-wrap').style.display = 'none';
   $('invoice-editor-wrap').style.display = 'block';
+  if (invoiceAutosaveTimer) { window.clearTimeout(invoiceAutosaveTimer); invoiceAutosaveTimer = undefined; }
+  setAutosaveStatus('inv-autosave-status', '');
   $<HTMLInputElement>('inv-edit-id').value = inv.id;
   $<HTMLInputElement>('inv-number').value = inv.number;
   $<HTMLSelectElement>('inv-status').value = inv.status;
@@ -726,6 +802,8 @@ export { renderReceiptList };
 export function newReceipt(): void {
   $('receipt-list-wrap').style.display = 'none';
   $('receipt-editor-wrap').style.display = 'block';
+  if (receiptAutosaveTimer) { window.clearTimeout(receiptAutosaveTimer); receiptAutosaveTimer = undefined; }
+  setAutosaveStatus('rcpt-autosave-status', '');
   $<HTMLInputElement>('rcpt-edit-id').value = '';
   $<HTMLInputElement>('rcpt-number').value = 'WST-KWT-' + new Date().getFullYear() + '-' + String(receipts.length + 1).padStart(4, '0');
   $<HTMLInputElement>('rcpt-date').value = new Date().toISOString().slice(0, 10);
@@ -738,7 +816,7 @@ export function newReceipt(): void {
   updateReceiptPreview();
 }
 
-export function closeReceiptEditor(): void { showReceiptList(); }
+export async function closeReceiptEditor(): Promise<void> { await flushPendingAutosaves(); showReceiptList(); }
 
 export function updateReceiptPreview(): void {
   renderLogoSlot('rprev-logo-slot', settings.logo, (settings.company_name || 'WS').slice(0, 2).toUpperCase());
@@ -753,14 +831,16 @@ export function updateReceiptPreview(): void {
   $('rprev-amount').textContent = formatRp(amount);
   $('rprev-terbilang').textContent = terbilang(amount);
   $('rprev-note').textContent = $<HTMLInputElement>('rcpt-note').value || '';
+  scheduleReceiptAutosave();
 }
 
-export async function saveReceipt(): Promise<void> {
-  if (!supabase) return;
+/** Inti logika simpan tanda terima, dipakai tombol simpan (silent:false) maupun auto-save (silent:true). */
+async function buildAndSaveReceipt(silent: boolean): Promise<boolean> {
+  if (!supabase) return false;
   const employee_name = $<HTMLInputElement>('rcpt-employee').value.trim();
   const amount = parseFloat($<HTMLInputElement>('rcpt-amount').value);
-  if (!employee_name) { alert('Nama karyawan wajib diisi.'); return; }
-  if (!amount || amount <= 0) { alert('Masukkan jumlah gaji yang valid.'); return; }
+  if (!employee_name) { if (!silent) alert('Nama karyawan wajib diisi.'); return false; }
+  if (!amount || amount <= 0) { if (!silent) alert('Masukkan jumlah gaji yang valid.'); return false; }
 
   const editId = $<HTMLInputElement>('rcpt-edit-id').value;
   const payload = {
@@ -777,14 +857,15 @@ export async function saveReceipt(): Promise<void> {
   let receiptRow: Receipt | null = null;
   if (editId) {
     const { data, error } = await supabase.from('receipts').update(payload).eq('id', editId).select().single();
-    if (reportSupabaseError(error, 'Simpan Tanda Terima')) return;
+    if (reportSupabaseError(error, silent ? 'Auto-save Tanda Terima' : 'Simpan Tanda Terima')) return false;
     receiptRow = data as Receipt;
   } else {
     const { data, error } = await supabase.from('receipts').insert(payload).select().single();
-    if (reportSupabaseError(error, 'Simpan Tanda Terima')) return;
+    if (reportSupabaseError(error, silent ? 'Auto-save Tanda Terima' : 'Simpan Tanda Terima')) return false;
     receiptRow = data as Receipt;
+    if (receiptRow) $<HTMLInputElement>('rcpt-edit-id').value = receiptRow.id; // supaya auto-save berikutnya UPDATE
   }
-  if (!receiptRow) return;
+  if (!receiptRow) return false;
 
   await supabase.from('transactions').delete().eq('receipt_id', receiptRow.id);
   await supabase.from('transactions').insert({
@@ -792,7 +873,25 @@ export async function saveReceipt(): Promise<void> {
     category: 'Gaji - ' + receiptRow.employee_name, amount: receiptRow.amount,
     note: 'Otomatis dari tanda terima ' + (receiptRow.receipt_number || '')
   });
+  return true;
+}
 
+let receiptAutosaveTimer: number | undefined;
+function scheduleReceiptAutosave(): void {
+  if (receiptAutosaveTimer) window.clearTimeout(receiptAutosaveTimer);
+  setAutosaveStatus('rcpt-autosave-status', 'Menyimpan draf...');
+  receiptAutosaveTimer = window.setTimeout(async () => {
+    receiptAutosaveTimer = undefined;
+    const ok = await buildAndSaveReceipt(true);
+    setAutosaveStatus('rcpt-autosave-status', ok ? ('Tersimpan otomatis \u00B7 ' + nowTime()) : '');
+    if (ok) await fetchAll();
+  }, 1100);
+}
+
+export async function saveReceipt(): Promise<void> {
+  if (receiptAutosaveTimer) { window.clearTimeout(receiptAutosaveTimer); receiptAutosaveTimer = undefined; }
+  const ok = await buildAndSaveReceipt(false);
+  if (!ok) return;
   await refreshAndRender();
   showReceiptList();
 }
@@ -802,6 +901,8 @@ export function editReceipt(id: string): void {
   if (!r) return;
   $('receipt-list-wrap').style.display = 'none';
   $('receipt-editor-wrap').style.display = 'block';
+  if (receiptAutosaveTimer) { window.clearTimeout(receiptAutosaveTimer); receiptAutosaveTimer = undefined; }
+  setAutosaveStatus('rcpt-autosave-status', '');
   $<HTMLInputElement>('rcpt-edit-id').value = r.id;
   $<HTMLInputElement>('rcpt-number').value = r.receipt_number || '';
   $<HTMLInputElement>('rcpt-date').value = r.date || '';
@@ -852,6 +953,13 @@ export function printDocument(elementId: string): void {
  * Dipakai supaya hasil selalu bisa diunduh langsung, termasuk di HP/webview
  * yang seringkali tidak menampilkan opsi "Save as PDF" dengan baik.
  */
+/**
+ * Download dokumen sebagai file PDF sungguhan (bukan lewat dialog print browser).
+ * Pakai jsPDF#html() dengan autoPaging:'text' supaya potongan ke halaman
+ * berikutnya jatuh di antara baris/kata, bukan memotong tengah teks atau baris
+ * tabel. Konten juga dirender ulang di lebar tetap (bukan lebar layar saat itu)
+ * supaya proporsinya selalu konsisten baik dibuat dari HP maupun desktop.
+ */
 export async function downloadPdf(elementId: string, filenamePrefix: string): Promise<void> {
   const source = document.getElementById(elementId);
   if (!source) return;
@@ -859,29 +967,31 @@ export async function downloadPdf(elementId: string, filenamePrefix: string): Pr
   const btns = document.querySelectorAll<HTMLButtonElement>('button');
   btns.forEach((b) => { b.disabled = true; });
 
-  try {
-    const canvas = await html2canvas(source, {
-      scale: 2,
-      backgroundColor: '#ffffff',
-      useCORS: true
-    });
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const imgWidth = pageWidth;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+  const FIXED_WIDTH_PX = 740; // lebar render tetap, agar hasil selalu proporsional
+  const clone = source.cloneNode(true) as HTMLElement;
+  clone.style.width = FIXED_WIDTH_PX + 'px';
+  clone.style.maxWidth = 'none';
+  clone.style.position = 'fixed';
+  clone.style.left = '-99999px';
+  clone.style.top = '0';
+  clone.style.margin = '0';
+  clone.style.boxShadow = 'none';
+  document.body.appendChild(clone);
 
-    let heightLeft = imgHeight;
-    let position = 0;
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-    heightLeft -= pageHeight;
-    while (heightLeft > 0) {
-      position = heightLeft - imgHeight;
-      pdf.addPage();
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-    }
+  try {
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    const marginPt = 26;
+    const pageWidthPt = pdf.internal.pageSize.getWidth();
+    const contentWidthPt = pageWidthPt - marginPt * 2;
+
+    await pdf.html(clone, {
+      x: marginPt,
+      y: marginPt,
+      width: contentWidthPt,
+      windowWidth: FIXED_WIDTH_PX,
+      autoPaging: 'text',
+      html2canvas: { scale: 2, backgroundColor: '#ffffff', useCORS: true }
+    });
 
     const stamp = new Date().toISOString().slice(0, 10);
     pdf.save(`${filenamePrefix}-${stamp}.pdf`);
@@ -889,6 +999,7 @@ export async function downloadPdf(elementId: string, filenamePrefix: string): Pr
     console.error(err);
     alert('Gagal membuat PDF. Coba pakai tombol "Print" sebagai alternatif.');
   } finally {
+    document.body.removeChild(clone);
     btns.forEach((b) => { b.disabled = false; });
   }
 }
