@@ -1002,6 +1002,12 @@ export async function downloadPdf(elementId: string, filenamePrefix: string): Pr
     const contentWidthPt = pageWidthPt - marginPt * 2;
     const usableHeightPt = pageHeightPt - marginPt * 2;
 
+    // Satu faktor skala tunggal untuk SEMUA blok, dihitung dari lebar total
+    // wadah (clone), bukan lebar masing-masing blok — supaya proporsi antar
+    // blok (yang punya inset/padding berbeda-beda) tetap konsisten dan tidak
+    // ada yang "membesar" karena salah dipaksa memenuhi lebar halaman.
+    const ptPerPx = contentWidthPt / FIXED_WIDTH_PX;
+
     const blocks = Array.from(clone.children).filter(
       (el) => el instanceof HTMLElement
     ) as HTMLElement[];
@@ -1013,8 +1019,9 @@ export async function downloadPdf(elementId: string, filenamePrefix: string): Pr
     for (const block of targets) {
       const canvas = await html2canvas(block, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
       const imgData = canvas.toDataURL('image/png');
-      const imgWidthPt = contentWidthPt;
-      const imgHeightPt = (canvas.height / canvas.width) * imgWidthPt;
+      const xPt = marginPt + block.offsetLeft * ptPerPx;
+      const imgWidthPt = block.offsetWidth * ptPerPx;
+      const imgHeightPt = block.offsetHeight * ptPerPx;
 
       if (imgHeightPt > usableHeightPt) {
         // Blok ini sendirian lebih tinggi dari satu halaman penuh (mis. tabel
@@ -1031,7 +1038,7 @@ export async function downloadPdf(elementId: string, filenamePrefix: string): Pr
           const ctx = sliceCanvas.getContext('2d');
           if (ctx) {
             ctx.drawImage(canvas, 0, Math.round(renderedPt * pxPerPt), canvas.width, sliceCanvas.height, 0, 0, canvas.width, sliceCanvas.height);
-            pdf.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', marginPt, marginPt, imgWidthPt, sliceHeightPt);
+            pdf.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', xPt, marginPt, imgWidthPt, sliceHeightPt);
           }
           renderedPt += sliceHeightPt;
           lastSliceHeightPt = sliceHeightPt;
@@ -1048,7 +1055,7 @@ export async function downloadPdf(elementId: string, filenamePrefix: string): Pr
         pageHasContent = false;
       }
 
-      pdf.addImage(imgData, 'PNG', marginPt, cursorY, imgWidthPt, imgHeightPt);
+      pdf.addImage(imgData, 'PNG', xPt, cursorY, imgWidthPt, imgHeightPt);
       cursorY += imgHeightPt;
       pageHasContent = true;
     }
