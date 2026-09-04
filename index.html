@@ -98,6 +98,12 @@
   </div>
 
   <main>
+    <div class="data-error-banner glass" id="dataErrorBanner" style="display:none;">
+      <i class="fa-solid fa-triangle-exclamation"></i>
+      <span id="dataErrorBannerText">Tidak bisa memuat data.</span>
+      <button class="btn btn-secondary btn-sm" onclick="retryFetchData()"><i class="fa-solid fa-rotate-right"></i> Coba Lagi</button>
+    </div>
+
     <!-- ============ DASHBOARD ============ -->
     <div class="app-view active" id="view-dashboard">
       <div class="page-header">

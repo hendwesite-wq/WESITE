@@ -29,6 +29,14 @@ export async function fetchAll(): Promise<void> {
     supabase.from('receipts').select('*').order('date', { ascending: false }),
     supabase.from('app_settings').select('*').eq('id', 1).maybeSingle()
   ]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const errors = [cRes.error, tRes.error, iRes.error, rRes.error, sRes.error].filter(Boolean) as any[];
+  if (errors.length) {
+    // Lempar supaya app.ts bisa menampilkan banner yang jelas ke pengguna,
+    // alih-alih diam-diam menampilkan aplikasi kosong tanpa penjelasan
+    // (mis. saat project Supabase sedang pause).
+    throw new Error(errors.map((e) => e.message).join(' | '));
+  }
   clients = (cRes.data as Client[]) || [];
   transactions = (tRes.data as Transaction[]) || [];
   invoices = (iRes.data as Invoice[]) || [];

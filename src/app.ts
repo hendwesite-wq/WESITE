@@ -117,8 +117,50 @@ export function initAuthListener(): void {
   window.addEventListener('pagehide', () => { flushPendingAutosaves(); });
 }
 
+function showDataErrorBanner(message: string): void {
+  const banner = document.getElementById('dataErrorBanner');
+  const text = document.getElementById('dataErrorBannerText');
+  if (text) text.textContent = message;
+  if (banner) banner.style.display = 'flex';
+}
+function hideDataErrorBanner(): void {
+  const banner = document.getElementById('dataErrorBanner');
+  if (banner) banner.style.display = 'none';
+}
+function friendlyFetchErrorMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  if (/fetch|network|NetworkError|Failed to fetch|ENOTFOUND/i.test(raw)) {
+    return 'Tidak bisa terhubung ke database. Kemungkinan besar project Supabase kamu sedang pause (otomatis pause kalau 7 hari tidak dipakai) — buka dashboard Supabase, klik "Restore project", tunggu sampai aktif, lalu klik "Coba Lagi" di sini.';
+  }
+  return 'Gagal memuat data dari database: ' + raw;
+}
+/** Ambil semua data dari Supabase, dan tampilkan banner yang jelas kalau gagal (bukan diam-diam kosong). */
+async function safeFetchAll(): Promise<boolean> {
+  try {
+    await fetchAll();
+    hideDataErrorBanner();
+    return true;
+  } catch (err) {
+    console.error(err);
+    showDataErrorBanner(friendlyFetchErrorMessage(err));
+    return false;
+  }
+}
+export async function retryFetchData(): Promise<void> {
+  const ok = await safeFetchAll();
+  if (ok) {
+    populateClientSelects();
+    renderDashboard();
+    renderTransactions();
+    renderClients();
+    renderInvoiceList();
+    renderReceiptList();
+  }
+}
+
 async function refreshAndRender(): Promise<void> {
-  await fetchAll();
+  const ok = await safeFetchAll();
+  if (!ok) return;
   populateClientSelects();
   renderDashboard();
   renderTransactions();
@@ -186,7 +228,7 @@ async function bootApp(): Promise<void> {
   if (mEmail) mEmail.textContent = displayHandle;
   if (mAvatar) mAvatar.textContent = initials;
 
-  await fetchAll();
+  await safeFetchAll();
   populateClientSelects();
   renderDashboard();
   renderTransactions();
@@ -303,9 +345,15 @@ function renderExpensePie(): void {
    ============================================================ */
 function populateClientSelects(): void {
   const opts = clients.map((c) => `<option value="${c.id}">${c.name}</option>`).join('');
-  const txSel = document.getElementById('tx-client'); if (txSel) txSel.innerHTML = '<option value="">- Tanpa Klien -</option>' + opts;
-  const filterSel = document.getElementById('tx-filter-client'); if (filterSel) filterSel.innerHTML = '<option value="">Semua Klien</option>' + opts;
-  const invSel = document.getElementById('inv-client'); if (invSel) invSel.innerHTML = '<option value="">- Pilih Klien -</option>' + opts;
+  // Simpan & kembalikan pilihan yang sedang aktif setelah menulis ulang opsi —
+  // supaya realtime sync (dipicu autosave sendiri saat mengetik) tidak
+  // diam-diam mengosongkan klien yang baru saja dipilih user.
+  const txSel = document.getElementById('tx-client') as HTMLSelectElement | null;
+  if (txSel) { const prev = txSel.value; txSel.innerHTML = '<option value="">- Tanpa Klien -</option>' + opts; txSel.value = prev; }
+  const filterSel = document.getElementById('tx-filter-client') as HTMLSelectElement | null;
+  if (filterSel) { const prev = filterSel.value; filterSel.innerHTML = '<option value="">Semua Klien</option>' + opts; filterSel.value = prev; }
+  const invSel = document.getElementById('inv-client') as HTMLSelectElement | null;
+  if (invSel) { const prev = invSel.value; invSel.innerHTML = '<option value="">- Pilih Klien -</option>' + opts; invSel.value = prev; }
 }
 
 export function openTxForm(): void {
@@ -706,7 +754,7 @@ function scheduleInvoiceAutosave(): void {
     invoiceAutosaveTimer = undefined;
     const ok = await buildAndSaveInvoice(true);
     setAutosaveStatus('inv-autosave-status', ok ? ('Tersimpan otomatis \u00B7 ' + nowTime()) : '');
-    if (ok) await fetchAll(); // sinkronkan cache lokal, tanpa render ulang form yang sedang diisi
+    if (ok) await safeFetchAll(); // sinkronkan cache lokal, tanpa render ulang form yang sedang diisi
   }, 1100);
 }
 
@@ -722,7 +770,7 @@ async function flushPendingAutosaves(): Promise<void> {
     receiptAutosaveTimer = undefined;
     await buildAndSaveReceipt(true);
   }
-  await fetchAll();
+  await safeFetchAll();
 }
 
 function setAutosaveStatus(elId: string, text: string): void {
@@ -885,7 +933,7 @@ function scheduleReceiptAutosave(): void {
     receiptAutosaveTimer = undefined;
     const ok = await buildAndSaveReceipt(true);
     setAutosaveStatus('rcpt-autosave-status', ok ? ('Tersimpan otomatis \u00B7 ' + nowTime()) : '');
-    if (ok) await fetchAll();
+    if (ok) await safeFetchAll();
   }, 1100);
 }
 

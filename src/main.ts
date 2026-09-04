@@ -5,7 +5,7 @@ import {
   openClientForm, closeClientForm, saveClient, editClient, deleteClient, onClientLogoChange, clearClientLogo,
   newInvoice, closeInvoiceEditor, addInvoiceItemRow, updateInvoicePreview, saveInvoice, editInvoice, deleteInvoice, renderInvoiceList,
   newReceipt, closeReceiptEditor, updateReceiptPreview, saveReceipt, editReceipt, deleteReceipt, renderReceiptList,
-  printDocument, downloadPdf, saveSettings, onSettingsLogoChange, clearSettingsLogo, exportData
+  printDocument, downloadPdf, saveSettings, onSettingsLogoChange, clearSettingsLogo, exportData, retryFetchData
 } from './app';
 
 // Markup HTML (index.html) memakai atribut onclick/oninput/onchange langsung,
@@ -56,6 +56,7 @@ w.saveSettings = saveSettings;
 w.onSettingsLogoChange = onSettingsLogoChange;
 w.clearSettingsLogo = clearSettingsLogo;
 w.exportData = exportData;
+w.retryFetchData = retryFetchData;
 
 // Mulai dengarkan status login Supabase (akan otomatis render app kalau sesi sudah ada)
 initAuthListener();
